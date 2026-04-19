@@ -60,7 +60,12 @@ func SetupLogging() {
 // como campo JSON estruturado separado.
 func DebugIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		debugID := uuid.New().String()
+		// Se veio de serviço upstream com X-Request-Id, herda (distributed tracing).
+		// Senão gera UUID novo.
+		debugID := c.GetHeader(HeaderRequestID)
+		if debugID == "" {
+			debugID = uuid.New().String()
+		}
 		logger := log.With().
 			Str("debugID", debugID).
 			Str("method", c.Request.Method).
