@@ -48,6 +48,17 @@ func (r *PoolResolver) Tenant(ctx context.Context, prefeituraUUID string) (*pgxp
 	return newPool, nil
 }
 
+// CloseTenant fecha o pool de um tenant específico e remove do cache.
+// Uso: antes de DROP DATABASE (Postgres exige no active connections).
+func (r *PoolResolver) CloseTenant(prefeituraUUID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if p, ok := r.pools[prefeituraUUID]; ok {
+		p.Close()
+		delete(r.pools, prefeituraUUID)
+	}
+}
+
 func (r *PoolResolver) CloseAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
