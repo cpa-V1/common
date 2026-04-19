@@ -13,10 +13,11 @@ const (
 	ctxSubject        = "subject"
 )
 
-// TenantMiddleware valida o JWT RS256 Bearer, extrai cpa_prefeitura_id e sub,
-// injeta ambos no contexto gin e enriquece o logger estruturado.
-// Quando svc-token trocar chaves: só pubKey muda aqui, handlers intocados.
-func TenantMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
+// AuthMiddleware valida o JWT RS256 Bearer, extrai `sub` (obrigatório) e
+// `cpa_prefeitura_id` (opcional — pode não existir em tokens bootstrap/admin).
+// Enriquece logger com ambos quando presentes.
+// Use em serviços que NÃO são tenant-scoped (ex: svc-prefeitura).
+func AuthMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
@@ -36,24 +37,36 @@ func TenantMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		prefeituraUUID := claims.CpaPrefeituraID
-		if prefeituraUUID == "" {
-			RespondError(c, http.StatusUnauthorized, "CPA_ERROR_UNAUTHORIZED", "Token sem cpa_prefeitura_id.")
-			c.Abort()
-			return
-		}
-		c.Set(ctxPrefeituraUUID, prefeituraUUID)
 		sub := claims.RegisteredClaims.Subject
 		c.Set(ctxSubject, sub)
-		logger := LoggerFromCtx(c)
-		enriched := logger.With().
-			Str("prefeitura_uuid", prefeituraUUID).
-			Str("sub", sub).
-			Logger()
+		c.Set(ctxPrefeituraUUID, claims.CpaPrefeituraID)
+
+		logCtx := LoggerFromCtx(c).With().Str("sub", sub)
+		if claims.CpaPrefeituraID != "" {
+			logCtx = logCtx.Str("prefeitura_uuid", claims.CpaPrefeituraID)
+		}
+		enriched := logCtx.Logger()
 		c.Set(ctxLogger, &enriched)
 		c.Next()
 	}
 }
 
+// TenantMiddleware = AuthMiddleware + exige `cpa_prefeitura_id` não-vazio.
+// Use em serviços tenant-scoped (ex: svc-trator).
+func TenantMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
+	auth := AuthMiddleware(pubKey)
+	return func(c *gin.Context) {
+		auth(c)
+		if c.IsAborted() {
+			return
+		}
+		if PrefeituraUUIDFromCtx(c) == "" {
+			RespondError(c, http.StatusUnauthorized, "CPA_ERROR_UNAUTHORIZED", "Token sem cpa_prefeitura_id.")
+			c.Abort()
+			return
+		}
+	}
+}
+
 func PrefeituraUUIDFromCtx(c *gin.Context) string { return c.GetString(ctxPrefeituraUUID) }
-func SubFromCtx(c *gin.Context) string             { return c.GetString(ctxSubject) }
+func SubFromCtx(c *gin.Context) string            { return c.GetString(ctxSubject) }
