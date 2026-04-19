@@ -54,7 +54,8 @@ func DebugIDMiddleware() gin.HandlerFunc {
 		c.Next()
 		latency := time.Since(start)
 
-		msg := fmt.Sprintf("[GIN] | %3d | %13v | %15s | %-7s %q",
+		msg := fmt.Sprintf("[GIN] %s | %3d | %13v | %15s | %-7s %q",
+			time.Now().Format("2006/01/02 - 15:04:05"),
 			c.Writer.Status(),
 			latency,
 			c.ClientIP(),
