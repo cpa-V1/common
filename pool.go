@@ -55,12 +55,6 @@ func NewPool(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 
 func printPoolStats(pool *pgxpool.Pool) {
 	s := pool.Stat()
-	log.Info().
-		Int32("max", s.MaxConns()).
-		Int32("total", s.TotalConns()).
-		Int32("constructing", s.ConstructingConns()).
-		Int32("in_use", s.AcquiredConns()).
-		Int32("idle", s.IdleConns()).
-		Int32("not_connected", s.MaxConns()-s.TotalConns()).
-		Msg("[pgxpool] stats")
+	log.Info().Msgf("[pgxpool] Stats pool: Max:%d TotalInPool:%d = (Constructing:%d + InUse:%d + Idle:%d)  NotConnected:%d",
+		s.MaxConns(), s.TotalConns(), s.ConstructingConns(), s.AcquiredConns(), s.IdleConns(), s.MaxConns()-s.TotalConns())
 }
