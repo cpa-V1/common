@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,14 @@ func (ginZerologWriter) Write(p []byte) (int, error) {
 func SetupGinLogger() {
 	gin.DefaultWriter = ginZerologWriter{}
 	gin.DefaultErrorWriter = ginZerologWriter{}
+}
+
+// GinLogFormatter é um formatter customizado para gin.LoggerWithFormatter
+// que inclui o debugID na linha de log, lendo do contexto do GIN.
+func GinLogFormatter(p gin.LogFormatterParams) string {
+	debugID, _ := p.Keys[ctxDebugID].(string)
+	return fmt.Sprintf("[GIN] debugID=%s | %3d | %v | %s | %s %q\n",
+		debugID, p.StatusCode, p.Latency, p.ClientIP, p.Method, p.Path)
 }
 
 const (
