@@ -81,7 +81,8 @@ func DebugIDMiddleware() gin.HandlerFunc {
 			c.Request.Method,
 			c.Request.URL.Path,
 		)
-		log.Info().Str("debugID", debugID).Msg(msg)
+		// Usa logger do contexto (já enriquecido por TenantMiddleware com prefeitura_uuid + sub)
+		LoggerFromCtx(c).Info().Msg(msg)
 	}
 }
 
