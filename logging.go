@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,24 @@ func (ginZerologWriter) Write(p []byte) (int, error) {
 func SetupGinLogger() {
 	gin.DefaultWriter = ginZerologWriter{}
 	gin.DefaultErrorWriter = ginZerologWriter{}
+}
+
+// SetupLogging configura zerolog globalmente: timestamp unix, campo "caller"
+// com path curto (2 componentes finais). Deve ser chamado no início de cada serviço.
+func SetupLogging() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+		short := file
+		if idx := strings.LastIndex(file, "/"); idx > 0 {
+			if idx2 := strings.LastIndex(file[:idx], "/"); idx2 >= 0 {
+				short = file[idx2+1:]
+			} else {
+				short = file[idx+1:]
+			}
+		}
+		return short + ":" + strconv.Itoa(line)
+	}
+	log.Logger = log.With().Caller().Logger()
 }
 
 // DebugIDMiddleware cria debugID por request, injeta logger no contexto,
