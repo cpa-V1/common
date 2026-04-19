@@ -26,6 +26,9 @@ func TenantMiddleware() gin.HandlerFunc {
 			return
 		}
 		c.Set(ctxPrefeituraUUID, prefeituraUUID)
+		logger := LoggerFromCtx(c)
+		enriched := logger.With().Str("prefeitura_uuid", prefeituraUUID).Logger()
+		c.Set(ctxLogger, &enriched)
 		c.Next()
 	}
 }
