@@ -1,7 +1,6 @@
 package common
 
 import (
-	"crypto/rsa"
 	"net/http"
 	"strings"
 
@@ -17,8 +16,11 @@ const (
 // `cpa_prefeitura_id` (opcional — pode não existir em tokens bootstrap/admin).
 // Enriquece logger com ambos quando presentes.
 // Use em serviços que NÃO são tenant-scoped (ex: svc-prefeitura).
-func AuthMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
+//
+// keyCache: read-through cache de chave pública. Erro ao fetch → 500 (fail-closed).
+func AuthMiddleware(keyCache *PublicKeyCache) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		logger := LoggerFromCtx(c)
 		auth := c.GetHeader("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
 			RespondError(c, http.StatusUnauthorized, "CPA_ERROR_UNAUTHORIZED", "Token não fornecido.")
@@ -31,6 +33,16 @@ func AuthMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		pubKey, err := keyCache.Get()
+		if err != nil {
+			logger.Error().Err(err).Msg("fetch JWT public key")
+			RespondError(c, http.StatusInternalServerError, "CPA_ERROR_TOKEN_UNAVAILABLE",
+				"Serviço de token indisponível.")
+			c.Abort()
+			return
+		}
+
 		claims, err := ParseJWT(tokenStr, pubKey)
 		if err != nil {
 			RespondError(c, http.StatusUnauthorized, "CPA_ERROR_UNAUTHORIZED", "Token inválido.")
@@ -53,8 +65,8 @@ func AuthMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
 
 // TenantMiddleware = AuthMiddleware + exige `cpa_prefeitura_id` não-vazio.
 // Use em serviços tenant-scoped (ex: svc-trator).
-func TenantMiddleware(pubKey *rsa.PublicKey) gin.HandlerFunc {
-	auth := AuthMiddleware(pubKey)
+func TenantMiddleware(keyCache *PublicKeyCache) gin.HandlerFunc {
+	auth := AuthMiddleware(keyCache)
 	return func(c *gin.Context) {
 		auth(c)
 		if c.IsAborted() {
