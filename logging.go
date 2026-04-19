@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,6 +11,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	ctxDebugID = "debugID"
+	ctxLogger  = "logger"
+)
+
+// ginZerologWriter redireciona stdout/stderr do GIN para zerolog (usado por
+// logs internos do GIN — como registro de rotas no startup e panics).
 type ginZerologWriter struct{}
 
 func (ginZerologWriter) Write(p []byte) (int, error) {
@@ -28,19 +36,9 @@ func SetupGinLogger() {
 	gin.DefaultErrorWriter = ginZerologWriter{}
 }
 
-// GinLogFormatter é um formatter customizado para gin.LoggerWithFormatter
-// que inclui o debugID na linha de log, lendo do contexto do GIN.
-func GinLogFormatter(p gin.LogFormatterParams) string {
-	debugID, _ := p.Keys[ctxDebugID].(string)
-	return fmt.Sprintf("[GIN] debugID=%s | %3d | %v | %s | %s %q\n",
-		debugID, p.StatusCode, p.Latency, p.ClientIP, p.Method, p.Path)
-}
-
-const (
-	ctxDebugID = "debugID"
-	ctxLogger  = "logger"
-)
-
+// DebugIDMiddleware cria debugID por request, injeta logger no contexto,
+// e loga uma linha no fim do request no formato nativo do GIN com debugID
+// como campo JSON estruturado separado.
 func DebugIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		debugID := uuid.New().String()
@@ -52,7 +50,18 @@ func DebugIDMiddleware() gin.HandlerFunc {
 		c.Set(ctxDebugID, debugID)
 		c.Set(ctxLogger, &logger)
 
+		start := time.Now()
 		c.Next()
+		latency := time.Since(start)
+
+		msg := fmt.Sprintf("[GIN] | %3d | %13v | %15s | %-7s %q",
+			c.Writer.Status(),
+			latency,
+			c.ClientIP(),
+			c.Request.Method,
+			c.Request.URL.Path,
+		)
+		log.Info().Str("debugID", debugID).Msg(msg)
 	}
 }
 
