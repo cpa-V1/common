@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -38,7 +39,9 @@ func SetupGinLogger() {
 }
 
 // SetupLogging configura zerolog globalmente: timestamp "2006-01-02 15:04:05.000",
-// campo "caller" com path curto (2 componentes finais). Deve ser chamado no início de cada serviço.
+// campo "caller" com path curto (2 componentes finais), e campo "service"
+// (lido do env var SERVICE_NAME, omitido se vazio). Deve ser chamado no início
+// de cada serviço.
 func SetupLogging() {
 	zerolog.TimeFieldFormat = "2006-01-02 15:04:05.000"
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
@@ -52,7 +55,11 @@ func SetupLogging() {
 		}
 		return short + ":" + strconv.Itoa(line)
 	}
-	log.Logger = log.With().Caller().Logger()
+	ctx := log.With().Caller()
+	if svc := os.Getenv("SERVICE_NAME"); svc != "" {
+		ctx = ctx.Str("service", svc)
+	}
+	log.Logger = ctx.Logger()
 }
 
 // DebugIDMiddleware cria debugID por request, injeta logger no contexto,
