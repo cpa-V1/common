@@ -37,10 +37,10 @@ func SetupGinLogger() {
 	gin.DefaultErrorWriter = ginZerologWriter{}
 }
 
-// SetupLogging configura zerolog globalmente: timestamp unix, campo "caller"
-// com path curto (2 componentes finais). Deve ser chamado no início de cada serviço.
+// SetupLogging configura zerolog globalmente: timestamp "2006-01-02 15:04:05.000",
+// campo "caller" com path curto (2 componentes finais). Deve ser chamado no início de cada serviço.
 func SetupLogging() {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.TimeFieldFormat = "2006-01-02 15:04:05.000"
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
 		short := file
 		if idx := strings.LastIndex(file, "/"); idx > 0 {
