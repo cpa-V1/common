@@ -3,6 +3,7 @@ package common
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 type ErrorResponse struct {
@@ -17,9 +18,18 @@ func RespondError(c *gin.Context, httpStatus int, errorCode, message string) {
 	if debugID == "" {
 		debugID = uuid.New().String()
 	}
-	// Auto-log 5xx pra facilitar debug (sem depender de cada call site lembrar)
-	if httpStatus >= 500 {
-		LoggerFromCtx(c).Error().
+	// Auto-log: 5xx como Error (inesperado, humano investiga);
+	// 4xx como Info (comportamento esperado, útil pra debug client).
+	logger := LoggerFromCtx(c)
+	var evt *zerolog.Event
+	switch {
+	case httpStatus >= 500:
+		evt = logger.Error()
+	case httpStatus >= 400:
+		evt = logger.Info()
+	}
+	if evt != nil {
+		evt.
 			Int("status", httpStatus).
 			Str("errorCode", errorCode).
 			Str("path", c.Request.URL.Path).
