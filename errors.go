@@ -17,6 +17,15 @@ func RespondError(c *gin.Context, httpStatus int, errorCode, message string) {
 	if debugID == "" {
 		debugID = uuid.New().String()
 	}
+	// Auto-log 5xx pra facilitar debug (sem depender de cada call site lembrar)
+	if httpStatus >= 500 {
+		LoggerFromCtx(c).Error().
+			Int("status", httpStatus).
+			Str("errorCode", errorCode).
+			Str("path", c.Request.URL.Path).
+			Str("method", c.Request.Method).
+			Msg(message)
+	}
 	c.JSON(httpStatus, ErrorResponse{
 		Message:        message,
 		DebugID:        debugID,
