@@ -11,8 +11,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// JWTIssuer é o único issuer aceito. Emitido por svc-login; verificado por
+// ParseJWT. Fail-closed: tokens com iss diferente → erro de parse.
+const JWTIssuer = "svc-login"
+
 // CpaClaims são os claims JWT usados pelo sistema CPA.
-// Emitidos por svc-token; verificados por TenantMiddleware.
+// Emitidos por svc-login; verificados por TenantMiddleware.
 //
 // `CpaEmail` é informativo — usado só pra debug/observabilidade (ex: mostrar
 // no UI, logar). Authz sempre usa `Subject` (UUID do user).
@@ -23,13 +27,14 @@ type CpaClaims struct {
 }
 
 // ParseJWT valida e parseia um JWT RS256, retornando os claims.
+// Valida: assinatura RSA + algoritmo + exp + iss == "svc-login".
 func ParseJWT(tokenStr string, pubKey *rsa.PublicKey) (*CpaClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &CpaClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("algoritmo inesperado: %v", t.Header["alg"])
 		}
 		return pubKey, nil
-	})
+	}, jwt.WithIssuer(JWTIssuer))
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +75,7 @@ func MintJWTWithEmail(privKey *rsa.PrivateKey, prefeituraUUID, sub, email string
 		CpaEmail:        email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   sub,
-			Issuer:    "svc-token",
+			Issuer:    JWTIssuer,
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
