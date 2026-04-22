@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -26,8 +25,25 @@ type jwk struct {
 }
 
 // FetchJWKS faz GET na URL e parseia a primeira chave RSA RS256.
-// Para uso em startup; não implementa cache nem refresh (deferred).
+// Usado pelo PublicKeyCache (lazy, ver pubkey_cache.go). Single retry com
+// backoff 1s entre tentativas — cobre flakiness passageira (svc-login
+// reiniciando, rede instável). Total: 2 tentativas.
 func FetchJWKS(url string) (*rsa.PublicKey, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
+		}
+		key, err := fetchJWKSOnce(url)
+		if err == nil {
+			return key, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("fetch JWKS após 2 tentativas: %w", lastErr)
+}
+
+func fetchJWKSOnce(url string) (*rsa.PublicKey, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -80,33 +96,6 @@ func RSAPublicKeyToJWK(pub *rsa.PublicKey, kid string) map[string]any {
 	}
 }
 
-// LoadPublicKey carrega a chave pública RSA do ambiente.
-// Prioridade:
-//   1. JWT_PUBLIC_KEY_URL — fetch JWKS (retry 3x: 1s, 2s, 4s)
-//   2. JWT_PUBLIC_KEY — PEM direto
-// Retorna erro se nenhuma var definida.
-func LoadPublicKey() (*rsa.PublicKey, error) {
-	if url := os.Getenv("JWT_PUBLIC_KEY_URL"); url != "" {
-		delays := []time.Duration{0, time.Second, 2 * time.Second, 4 * time.Second}
-		var lastErr error
-		for i, d := range delays {
-			if d > 0 {
-				time.Sleep(d)
-			}
-			key, err := FetchJWKS(url)
-			if err == nil {
-				return key, nil
-			}
-			lastErr = err
-			if i < len(delays)-1 {
-				// log retry na próxima iteração
-				continue
-			}
-		}
-		return nil, fmt.Errorf("falha ao buscar JWKS em %s após retries: %w", url, lastErr)
-	}
-	if pem := os.Getenv("JWT_PUBLIC_KEY"); pem != "" {
-		return ParseRSAPublicKeyPEM(pem)
-	}
-	return nil, fmt.Errorf("defina JWT_PUBLIC_KEY_URL ou JWT_PUBLIC_KEY")
-}
+// LoadPublicKey removido — dead code. Startup eager foi substituído por
+// PublicKeyCache lazy (ver pubkey_cache.go, ADR-005). Retry agora mora
+// direto em FetchJWKS.

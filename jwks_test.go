@@ -51,24 +51,25 @@ func jwk2(m map[string]any) []jwk {
 	}}
 }
 
-func TestLoadPublicKey_PEMEnv(t *testing.T) {
+func TestJWKSCache_PEMEnv(t *testing.T) {
 	priv, _ := NewTestKeyPair()
 	pemStr := marshalPublicKeyPEM(t, &priv.PublicKey)
 
-	os.Unsetenv("JWT_PUBLIC_KEY_URL")
-	os.Setenv("JWT_PUBLIC_KEY", pemStr)
-	defer os.Unsetenv("JWT_PUBLIC_KEY")
+	os.Unsetenv("CPA_JWT_PUBLIC_KEY_URL")
+	os.Setenv("CPA_JWT_PUBLIC_KEY", pemStr)
+	defer os.Unsetenv("CPA_JWT_PUBLIC_KEY")
 
-	key, err := LoadPublicKey()
+	cache := NewJWKSCache()
+	key, err := cache.Get()
 	if err != nil {
-		t.Fatalf("LoadPublicKey: %v", err)
+		t.Fatalf("cache.Get: %v", err)
 	}
 	if key.N.Cmp(priv.PublicKey.N) != 0 {
 		t.Fatal("chave PEM carregada diferente")
 	}
 }
 
-func TestLoadPublicKey_URLEnv(t *testing.T) {
+func TestJWKSCache_URLEnv(t *testing.T) {
 	_, pub := NewTestKeyPair()
 	body, _ := json.Marshal(jwksResponse{Keys: jwk2(RSAPublicKeyToJWK(pub, "k1"))})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,23 +77,51 @@ func TestLoadPublicKey_URLEnv(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	os.Unsetenv("JWT_PUBLIC_KEY")
-	os.Setenv("JWT_PUBLIC_KEY_URL", srv.URL)
-	defer os.Unsetenv("JWT_PUBLIC_KEY_URL")
+	os.Unsetenv("CPA_JWT_PUBLIC_KEY")
+	os.Setenv("CPA_JWT_PUBLIC_KEY_URL", srv.URL)
+	defer os.Unsetenv("CPA_JWT_PUBLIC_KEY_URL")
 
-	key, err := LoadPublicKey()
+	cache := NewJWKSCache()
+	key, err := cache.Get()
 	if err != nil {
-		t.Fatalf("LoadPublicKey: %v", err)
+		t.Fatalf("cache.Get: %v", err)
 	}
 	if key.N.Cmp(pub.N) != 0 {
 		t.Fatal("chave JWKS carregada diferente")
 	}
 }
 
-func TestLoadPublicKey_VazioRetornaErro(t *testing.T) {
-	os.Unsetenv("JWT_PUBLIC_KEY")
-	os.Unsetenv("JWT_PUBLIC_KEY_URL")
-	if _, err := LoadPublicKey(); err == nil {
+func TestJWKSCache_VazioRetornaErro(t *testing.T) {
+	os.Unsetenv("CPA_JWT_PUBLIC_KEY")
+	os.Unsetenv("CPA_JWT_PUBLIC_KEY_URL")
+	cache := NewJWKSCache()
+	if _, err := cache.Get(); err == nil {
 		t.Fatal("esperava erro quando nenhuma var definida")
+	}
+}
+
+func TestFetchJWKS_RetrySucceedsOnSecondAttempt(t *testing.T) {
+	_, pub := NewTestKeyPair()
+	body, _ := json.Marshal(jwksResponse{Keys: jwk2(RSAPublicKeyToJWK(pub, "k1"))})
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	key, err := FetchJWKS(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchJWKS esperava sucesso no retry: %v", err)
+	}
+	if key.N.Cmp(pub.N) != 0 {
+		t.Fatal("chave errada após retry")
+	}
+	if attempts != 2 {
+		t.Errorf("esperava 2 tentativas, got %d", attempts)
 	}
 }

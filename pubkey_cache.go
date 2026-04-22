@@ -9,11 +9,24 @@ import (
 	"time"
 )
 
-// PublicKeyCache: read-through cache da chave pública JWT.
-// - Get() retorna chave cacheada se válida (dentro do TTL); senão re-fetcha
-// - Loader chamado lazily na 1ª request e a cada expiração
-// - Mutex coarse-grained — TTL alto (60s default) faz fetch raro
-// - Erro de fetch propaga pro middleware → 500 (zero-trust fail-closed)
+// PublicKeyCache guarda a chave pública RSA usada pra verificar JWTs.
+// Tipicamente obtida do endpoint JWKS do svc-login.
+//
+// É um **ponteiro pro cache**, não um snapshot one-shot. Uma instância viva
+// pelo lifetime do processo (criada no main, reusada em todas requests).
+//
+// # Fluxo (ADR-005)
+//
+//  1. main() chama NewJWKSCache() — APENAS configura loader + TTL. Sem rede.
+//     Boot não falha se svc-login estiver offline.
+//  2. 1ª request → middleware JWT chama keyCache.Get():
+//     - estado vazio → loader() roda → HTTP GET /jwks.json → chave salva
+//     - seta expiry = now + TTL (60s default)
+//  3. Requests dentro do TTL → retorna chave cacheada, zero rede
+//  4. Request após TTL → loader() re-fetcha, renova cache
+//
+// Thread-safe via mutex. TTL alto (60s) → contenção baixa.
+// Fail-closed: erro no fetch propaga pro middleware → 500 (nunca libera).
 type PublicKeyCache struct {
 	mu     sync.Mutex
 	key    *rsa.PublicKey
@@ -22,6 +35,7 @@ type PublicKeyCache struct {
 	loader func() (*rsa.PublicKey, error)
 }
 
+// Get retorna a chave cacheada (se dentro do TTL) ou re-fetcha via loader.
 func (c *PublicKeyCache) Get() (*rsa.PublicKey, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -37,11 +51,15 @@ func (c *PublicKeyCache) Get() (*rsa.PublicKey, error) {
 	return c.key, nil
 }
 
-// NewPublicKeyCacheFromEnv lê CPA_JWT_PUBLIC_KEY_URL (preferencial) ou
-// CPA_JWT_PUBLIC_KEY (fallback PEM).
-// TTL default 60s; override via CPA_JWT_PUBLIC_KEY_TTL_SECONDS.
-// Prefixo CPA_ indica env var definida pelo sistema (não padrão externo).
-func NewPublicKeyCacheFromEnv() *PublicKeyCache {
+// NewJWKSCache cria cache lazy da chave pública JWT. Lê config de env:
+//
+//   - CPA_JWT_PUBLIC_KEY_URL — preferencial, ex: http://svc-login:8088/.well-known/jwks.json
+//   - CPA_JWT_PUBLIC_KEY     — fallback, chave RSA PEM inline (dev)
+//   - CPA_JWT_PUBLIC_KEY_TTL_SECONDS — override do TTL default 60s
+//
+// Antes chamado NewPublicKeyCacheFromEnv. Renomeado porque "FromEnv" não
+// explicava o que se cacheava (resposta: JWKS).
+func NewJWKSCache() *PublicKeyCache {
 	ttl := 60 * time.Second
 	if s := os.Getenv("CPA_JWT_PUBLIC_KEY_TTL_SECONDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
