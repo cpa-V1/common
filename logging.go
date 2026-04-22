@@ -1,7 +1,9 @@
 package common
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +14,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+// requestBodyLogCap é o tamanho máximo (em bytes) do body incluído no log
+// "incoming request". Body maior é truncado + flag truncated=true. Evita
+// encher logs com uploads grandes.
+const requestBodyLogCap = 8 * 1024
+
+// loginPathsSkipped: paths cujo body contém credenciais e não deve ser logado
+// (evita vazamento de senha em logs dev/prod).
+var loginPathsSkipped = map[string]struct{}{
+	"/cpa/v1/login": {},
+}
 
 const (
 	ctxDebugID = "debugID"
@@ -63,8 +76,9 @@ func SetupLogging() {
 }
 
 // DebugIDMiddleware cria debugID por request, injeta logger no contexto,
-// e loga uma linha no fim do request no formato nativo do GIN com debugID
-// como campo JSON estruturado separado.
+// loga "incoming request" (com requestBody capado a 8KB, truncado se maior;
+// redacted em paths de login) na entrada, e loga linha formato GIN com
+// status+latency na saída.
 func DebugIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Se veio de serviço upstream com X-Request-Id, herda (distributed tracing).
@@ -81,6 +95,15 @@ func DebugIDMiddleware() gin.HandlerFunc {
 		c.Set(ctxDebugID, debugID)
 		c.Set(ctxLogger, &logger)
 
+		// Lê body (cap 8KB), restaura pra handler. Evita logar senhas em paths
+		// de login. Body maior que cap vira truncated=true.
+		bodyStr, truncated := readRequestBodyForLog(c)
+		entry := logger.Info().Str("requestBody", bodyStr)
+		if truncated {
+			entry = entry.Bool("requestBodyTruncated", true)
+		}
+		entry.Msg("incoming request")
+
 		start := time.Now()
 		c.Next()
 		latency := time.Since(start)
@@ -96,6 +119,35 @@ func DebugIDMiddleware() gin.HandlerFunc {
 		// Usa logger do contexto (já enriquecido por TenantMiddleware com prefeitura_uuid + sub)
 		LoggerFromCtx(c).Info().Msg(msg)
 	}
+}
+
+// readRequestBodyForLog lê até requestBodyLogCap bytes do body e restaura
+// c.Request.Body com o conteúdo completo lido (handlers funcionam normal).
+// Retorna a string pra log + flag de truncamento. Em paths de login, não lê
+// o body e retorna marker "[redacted:login]".
+func readRequestBodyForLog(c *gin.Context) (string, bool) {
+	if _, skip := loginPathsSkipped[c.Request.URL.Path]; skip {
+		return "[redacted:login]", false
+	}
+	if c.Request.Body == nil {
+		return "", false
+	}
+	// Lê cap+1 pra detectar truncamento.
+	limited := io.LimitReader(c.Request.Body, requestBodyLogCap+1)
+	b, err := io.ReadAll(limited)
+	if err != nil {
+		return "", false
+	}
+	// Restaura body: read cap+1 bytes já consumidos; concat com resto (se houver).
+	rest, _ := io.ReadAll(c.Request.Body)
+	full := append(b, rest...)
+	c.Request.Body = io.NopCloser(bytes.NewReader(full))
+
+	truncated := len(b) > requestBodyLogCap
+	if truncated {
+		b = b[:requestBodyLogCap]
+	}
+	return string(b), truncated
 }
 
 func LoggerFromCtx(c *gin.Context) *zerolog.Logger {
