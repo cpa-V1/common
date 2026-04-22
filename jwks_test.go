@@ -59,7 +59,7 @@ func TestJWKSCache_PEMEnv(t *testing.T) {
 	os.Setenv("CPA_JWT_PUBLIC_KEY", pemStr)
 	defer os.Unsetenv("CPA_JWT_PUBLIC_KEY")
 
-	cache := NewJWKSCache()
+	cache := NewJWKSLazyCache()
 	key, err := cache.Get()
 	if err != nil {
 		t.Fatalf("cache.Get: %v", err)
@@ -81,7 +81,7 @@ func TestJWKSCache_URLEnv(t *testing.T) {
 	os.Setenv("CPA_JWT_PUBLIC_KEY_URL", srv.URL)
 	defer os.Unsetenv("CPA_JWT_PUBLIC_KEY_URL")
 
-	cache := NewJWKSCache()
+	cache := NewJWKSLazyCache()
 	key, err := cache.Get()
 	if err != nil {
 		t.Fatalf("cache.Get: %v", err)
@@ -94,7 +94,7 @@ func TestJWKSCache_URLEnv(t *testing.T) {
 func TestJWKSCache_VazioRetornaErro(t *testing.T) {
 	os.Unsetenv("CPA_JWT_PUBLIC_KEY")
 	os.Unsetenv("CPA_JWT_PUBLIC_KEY_URL")
-	cache := NewJWKSCache()
+	cache := NewJWKSLazyCache()
 	if _, err := cache.Get(); err == nil {
 		t.Fatal("esperava erro quando nenhuma var definida")
 	}

@@ -17,9 +17,9 @@ import (
 //
 // # Fluxo (ADR-005)
 //
-//  1. main() chama NewJWKSCache() — APENAS configura loader + TTL. Sem rede.
+//  1. main() chama NewJWKSLazyCache() — APENAS configura loader + TTL. Sem rede.
 //     Boot não falha se svc-login estiver offline.
-//  2. 1ª request → middleware JWT chama keyCache.Get():
+//  2. 1ª request → middleware JWT chama jwksCache.Get():
 //     - estado vazio → loader() roda → HTTP GET /jwks.json → chave salva
 //     - seta expiry = now + TTL (60s default)
 //  3. Requests dentro do TTL → retorna chave cacheada, zero rede
@@ -51,15 +51,18 @@ func (c *PublicKeyCache) Get() (*rsa.PublicKey, error) {
 	return c.key, nil
 }
 
-// NewJWKSCache cria cache lazy da chave pública JWT. Lê config de env:
+// NewJWKSLazyCache cria cache **lazy** da chave pública JWT obtida via JWKS.
+// Lazy = nada é buscado no boot; 1ª request dispara o fetch (ver
+// PublicKeyCache docstring + ADR-005).
+//
+// Config via env:
 //
 //   - CPA_JWT_PUBLIC_KEY_URL — preferencial, ex: http://svc-login:8088/.well-known/jwks.json
 //   - CPA_JWT_PUBLIC_KEY     — fallback, chave RSA PEM inline (dev)
 //   - CPA_JWT_PUBLIC_KEY_TTL_SECONDS — override do TTL default 60s
 //
-// Antes chamado NewPublicKeyCacheFromEnv. Renomeado porque "FromEnv" não
-// explicava o que se cacheava (resposta: JWKS).
-func NewJWKSCache() *PublicKeyCache {
+// Contraparte: NewPublicKeyCacheStatic (testes, chave fixa em memória).
+func NewJWKSLazyCache() *PublicKeyCache {
 	ttl := 60 * time.Second
 	if s := os.Getenv("CPA_JWT_PUBLIC_KEY_TTL_SECONDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
