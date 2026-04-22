@@ -37,11 +37,13 @@ func (c *PublicKeyCache) Get() (*rsa.PublicKey, error) {
 	return c.key, nil
 }
 
-// NewPublicKeyCacheFromEnv lê JWT_PUBLIC_KEY_URL (preferencial) ou JWT_PUBLIC_KEY (fallback PEM).
-// TTL default 60s; override via JWT_PUBLIC_KEY_TTL_SECONDS.
+// NewPublicKeyCacheFromEnv lê CPA_JWT_PUBLIC_KEY_URL (preferencial) ou
+// CPA_JWT_PUBLIC_KEY (fallback PEM).
+// TTL default 60s; override via CPA_JWT_PUBLIC_KEY_TTL_SECONDS.
+// Prefixo CPA_ indica env var definida pelo sistema (não padrão externo).
 func NewPublicKeyCacheFromEnv() *PublicKeyCache {
 	ttl := 60 * time.Second
-	if s := os.Getenv("JWT_PUBLIC_KEY_TTL_SECONDS"); s != "" {
+	if s := os.Getenv("CPA_JWT_PUBLIC_KEY_TTL_SECONDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			ttl = time.Duration(n) * time.Second
 		}
@@ -49,13 +51,13 @@ func NewPublicKeyCacheFromEnv() *PublicKeyCache {
 	return &PublicKeyCache{
 		ttl: ttl,
 		loader: func() (*rsa.PublicKey, error) {
-			if url := os.Getenv("JWT_PUBLIC_KEY_URL"); url != "" {
+			if url := os.Getenv("CPA_JWT_PUBLIC_KEY_URL"); url != "" {
 				return FetchJWKS(url)
 			}
-			if pem := os.Getenv("JWT_PUBLIC_KEY"); pem != "" {
+			if pem := os.Getenv("CPA_JWT_PUBLIC_KEY"); pem != "" {
 				return ParseRSAPublicKeyPEM(pem)
 			}
-			return nil, fmt.Errorf("defina JWT_PUBLIC_KEY_URL ou JWT_PUBLIC_KEY")
+			return nil, fmt.Errorf("defina CPA_JWT_PUBLIC_KEY_URL ou CPA_JWT_PUBLIC_KEY")
 		},
 	}
 }
