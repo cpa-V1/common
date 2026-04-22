@@ -13,8 +13,12 @@ import (
 
 // CpaClaims são os claims JWT usados pelo sistema CPA.
 // Emitidos por svc-token; verificados por TenantMiddleware.
+//
+// `CpaEmail` é informativo — usado só pra debug/observabilidade (ex: mostrar
+// no UI, logar). Authz sempre usa `Subject` (UUID do user).
 type CpaClaims struct {
 	CpaPrefeituraID string `json:"cpa_prefeitura_id"`
+	CpaEmail        string `json:"cpa_email,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -55,8 +59,15 @@ func ParseRSAPublicKeyPEM(pemStr string) (*rsa.PublicKey, error) {
 
 // MintJWT gera um JWT RS256 assinado. Usado por svc-token (produção) e ferramentas dev/teste.
 func MintJWT(privKey *rsa.PrivateKey, prefeituraUUID, sub string) (string, error) {
+	return MintJWTWithEmail(privKey, prefeituraUUID, sub, "")
+}
+
+// MintJWTWithEmail é como MintJWT mas inclui claim informativo `cpa_email`.
+// `email` vazio omite o claim.
+func MintJWTWithEmail(privKey *rsa.PrivateKey, prefeituraUUID, sub, email string) (string, error) {
 	claims := CpaClaims{
 		CpaPrefeituraID: prefeituraUUID,
+		CpaEmail:        email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   sub,
 			Issuer:    "svc-token",
