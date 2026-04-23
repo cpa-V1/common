@@ -31,7 +31,7 @@ var DefaultQuotas = Quotas{
 	Agricultores:  2000,
 	Terras:        6000,
 	Users:         100,
-	PedidosAtivos: 500,
+	PedidosAtivos: 1000000,
 }
 
 // ErrCodeQuotaExceeded — errorCode padronizado retornado em 422 quando

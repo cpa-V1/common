@@ -1,5 +1,9 @@
 # CHANGELOG — common
 
+## [0.24.1] — 2026-04-23
+### Changed
+- `DefaultQuotas.PedidosAtivos`: 500 → 1_000_000. Pedidos são temporais (crescem com uso); limite de 500 era restritivo pra operação real. 1M efetivamente ilimitado pra escala de prefeitura municipal.
+
 ## [0.24.0] — 2026-04-23
 ### Added
 - `quotas.go`: struct `Quotas` + `DefaultQuotas` com limites hardcoded por recurso (tratores:20, ferramentas:30, motoristas:30, funcionarios:50, agricultores:2000, terras:6000, users:100, pedidosAtivos:500). Source of truth único — sem override per-tenant, sem persistência em DB. Enforcement in-process em cada svc que faz POST.
