@@ -17,7 +17,7 @@ import (
 // exigem PlatformMiddleware + EnforceMiddleware("cpa.platform.<op>").
 const (
 	RootUserUUID       = "00000000-0000-0000-0000-000000000000"
-	RootUserEmail      = "root@cpa.com" // root user do sistema (distinto de admin@cpa.com — admin seed de cada tenant)
+	RootUserEmail      = "root@cpa.com" // root user do sistema (distinto de admin@cpa.com — admin default de cada tenant)
 	PlatformTenantUUID = "00000000-0000-0000-0000-000000000000"
 )
 
