@@ -1,5 +1,14 @@
 # CHANGELOG — common
 
+## [0.25.0] — 2026-04-25
+### BREAKING (ADR-013 — extração IDP pra idp-colmeia)
+- `JWTIssuer`: const → var, default `http://idp-colmeia:8088/idp-colmeia`. Override via env `CPA_JWT_ISSUER`. Antes: `"svc-login"`.
+- `CpaClaims` JSON tags renomeadas:
+  - `cpa_prefeitura_id` → `tenant_uuid` (genérico, sem ref a CPA)
+  - `cpa_email` → `email` (OIDC standard, drop prefix)
+- Go fields preservados (`CpaPrefeituraID`, `CpaEmail`) — accessors em svcs continuam funcionando. Só wire format JWT muda.
+- Tokens emitidos com issuer/claims antigos viram inválidos após esse bump. 1h TTL = max 1h disruption durante deploy.
+
 ## [0.24.1] — 2026-04-23
 ### Changed
 - `DefaultQuotas.PedidosAtivos`: 500 → 1_000_000. Pedidos são temporais (crescem com uso); limite de 500 era restritivo pra operação real. 1M efetivamente ilimitado pra escala de prefeitura municipal.

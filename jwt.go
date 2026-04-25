@@ -6,23 +6,35 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// JWTIssuer é o único issuer aceito. Emitido por svc-login; verificado por
-// ParseJWT. Fail-closed: tokens com iss diferente → erro de parse.
-const JWTIssuer = "svc-login"
+// JWTIssuer é o único issuer aceito.
+// Default: idp-colmeia em rede docker. Override via env CPA_JWT_ISSUER (tests).
+// Verificado por ParseJWT. Fail-closed: tokens com iss diferente → erro de parse.
+var JWTIssuer = func() string {
+	if v := os.Getenv("CPA_JWT_ISSUER"); v != "" {
+		return v
+	}
+	return "http://idp-colmeia:8088/idp-colmeia"
+}()
 
 // CpaClaims são os claims JWT usados pelo sistema CPA.
-// Emitidos por svc-login; verificados por TenantMiddleware.
+// Emitidos pelo idp-colmeia; verificados por TenantMiddleware.
+//
+// JSON tags refletem o contrato OIDC genérico (tenant_uuid, email).
+// Go fields preservam nomes históricos (CpaPrefeituraID, CpaEmail) pra
+// não quebrar accessors em todos os svcs — semantically estes campos são
+// o mapping CPA-side dos claims genéricos.
 //
 // `CpaEmail` é informativo — usado só pra debug/observabilidade (ex: mostrar
 // no UI, logar). Authz sempre usa `Subject` (UUID do user).
 type CpaClaims struct {
-	CpaPrefeituraID string `json:"cpa_prefeitura_id"`
-	CpaEmail        string `json:"cpa_email,omitempty"`
+	CpaPrefeituraID string `json:"tenant_uuid"`     // claim genérico do idp
+	CpaEmail        string `json:"email,omitempty"` // OIDC standard
 	jwt.RegisteredClaims
 }
 
